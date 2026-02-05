@@ -14,7 +14,7 @@ Method: for each context embedding, find its max cosine similarity to any goal e
 |----------|-------|
 | Name | `goalDrift` |
 | Range | 0 (aligned) to 1 (drifted) |
-| Inverted | Yes — higher = less coherent |
+| Polarity | Higher = less coherent (inverted during index computation) |
 
 ```typescript
 import { computeGoalDrift, goalDriftMetric } from "@peleke.s/interoception";
@@ -38,7 +38,7 @@ Method: for each goal embedding, find its max cosine similarity to any goal-rele
 |----------|-------|
 | Name | `memoryRetention` |
 | Range | 0 (forgotten) to 1 (retained) |
-| Inverted | No — higher = more coherent |
+| Polarity | Higher = more coherent (used directly) |
 
 ```typescript
 import { computeMemoryRetention, memoryRetentionMetric } from "@peleke.s/interoception";
@@ -56,7 +56,7 @@ Method: pairwise cosine similarity across context embeddings. Count pairs below 
 |----------|-------|
 | Name | `contradictionPressure` |
 | Range | 0 (coherent) to 1 (contradictory) |
-| Inverted | Yes — higher = less coherent |
+| Polarity | Higher = less coherent (inverted during index computation) |
 
 ```typescript
 import { computeContradictionPressure, contradictionPressureMetric } from "@peleke.s/interoception";
@@ -78,7 +78,7 @@ Method: mean pairwise distance (`1 - cosineSimilarity`) across context embedding
 |----------|-------|
 | Name | `semanticDiffusion` |
 | Range | 0 (focused) to 1 (diffuse) |
-| Inverted | Yes — higher = less coherent |
+| Polarity | Higher = less coherent (inverted during index computation) |
 
 ```typescript
 import { computeSemanticDiffusion, semanticDiffusionMetric } from "@peleke.s/interoception";
@@ -100,7 +100,6 @@ This ensures the sensor never throws on edge cases.
 ```typescript
 interface MetricFn {
   name: string;
-  inverted?: boolean;
   compute(input: MetricInput): number;
 }
 ```
@@ -123,7 +122,6 @@ import type { MetricFn } from "@peleke.s/interoception";
 
 const focusScore: MetricFn = {
   name: "focusScore",
-  inverted: false, // Higher = more focused = more coherent
   compute(input) {
     // Custom logic using input.goalEmbeddings, contextEmbeddings, etc.
     return 0.8;
@@ -134,34 +132,11 @@ const focusScore: MetricFn = {
 Rules for custom metrics:
 
 1. Return a value in [0, 1]
-2. Set `inverted: true` if higher values mean less coherent
-3. Return 0 when inputs are empty (noop-safe)
-4. The `name` becomes the key in `MetricSnapshot`
+2. Return 0 when inputs are empty (noop-safe)
+3. The `name` becomes the key in `MetricSnapshot`
 
-## ScalarMetricFn Interface
-
-```typescript
-interface ScalarMetricFn {
-  name: string;
-  inverted?: boolean;
-  compute(): number | Promise<number>;
-}
-```
-
-Scalar metrics don't receive embedding data. They close over their own dependencies at construction time and read directly from agent state, databases, APIs, etc.
-
-```typescript
-import type { ScalarMetricFn } from "@peleke.s/interoception";
-
-const responseLatency: ScalarMetricFn = {
-  name: "responseLatency",
-  inverted: true, // High latency = less coherent
-  async compute() {
-    const latency = await getAverageLatency();
-    return Math.min(latency / 5000, 1); // Normalize to [0, 1]
-  },
-};
-```
+!!! note
+    Custom metrics with "higher = worse" polarity are handled by `computeCoherenceIndex`, which maintains an internal set of inverted metric names (`goalDrift`, `contradictionPressure`, `semanticDiffusion`). If you add custom metrics that need inversion, you'll need to either pre-invert them or provide custom weights accordingly.
 
 ## Default Metrics
 

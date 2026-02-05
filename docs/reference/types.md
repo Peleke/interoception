@@ -53,7 +53,6 @@ A single metric function. Strategy pattern — consumers can swap, add, or repla
 ```typescript
 interface MetricFn {
   name: string;
-  inverted?: boolean;
   compute(input: MetricInput): number;
 }
 ```
@@ -61,28 +60,7 @@ interface MetricFn {
 | Property | Type | Description |
 |----------|------|-------------|
 | `name` | `string` | Metric name, used as key in `MetricSnapshot` |
-| `inverted` | `boolean \| undefined` | If true, higher values = less coherent |
 | `compute` | `(input: MetricInput) => number` | Compute metric value in [0, 1] |
-
-**Used by:** [`PreExecSensorOptions`](#preexecsensoroptions)
-
-### `ScalarMetricFn`
-
-A scalar metric that reads directly from agent state (no embeddings).
-
-```typescript
-interface ScalarMetricFn {
-  name: string;
-  inverted?: boolean;
-  compute(): number | Promise<number>;
-}
-```
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `name` | `string` | Metric name, used as key in `MetricSnapshot` |
-| `inverted` | `boolean \| undefined` | If true, higher values = less coherent |
-| `compute` | `() => number \| Promise<number>` | Compute metric value in [0, 1] |
 
 **Used by:** [`PreExecSensorOptions`](#preexecsensoroptions)
 
@@ -233,7 +211,6 @@ interface PreExecSensorOptions {
   embedder: Embedder;
   state: StateProvider;
   metrics?: MetricFn[];
-  scalarMetrics?: ScalarMetricFn[];
   weights?: MetricWeights;
   thresholds?: BandThresholds;
   onReading?: (reading: CoherenceReading) => void | Promise<void>;
@@ -245,8 +222,7 @@ interface PreExecSensorOptions {
 |----------|------|---------|-------------|
 | `embedder` | `Embedder` | — | Embedding provider |
 | `state` | `StateProvider` | — | Agent state provider |
-| `metrics` | `MetricFn[]` | `DEFAULT_METRICS` | Embedding-based metrics |
-| `scalarMetrics` | `ScalarMetricFn[]` | `[]` | Scalar metrics |
+| `metrics` | `MetricFn[]` | `DEFAULT_METRICS` | Metric functions to run |
 | `weights` | `MetricWeights` | `DEFAULT_WEIGHTS` | Coherence index weights |
 | `thresholds` | `BandThresholds` | `DEFAULT_THRESHOLDS` | Band thresholds |
 | `onReading` | `(reading: CoherenceReading) => void \| Promise<void>` | — | Post-reading callback |
