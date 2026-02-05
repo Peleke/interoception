@@ -8,13 +8,14 @@ import type {
   MetricSnapshot,
   BandThresholds,
   CoherenceReading,
+  ScalarMetricFn,
 } from "./types.js";
 import { DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS } from "./types.js";
 import { goalDriftMetric } from "./metrics/goal-drift.js";
 import { memoryRetentionMetric } from "./metrics/memory-retention.js";
 import { contradictionPressureMetric } from "./metrics/contradiction-pressure.js";
 import { semanticDiffusionMetric } from "./metrics/semantic-diffusion.js";
-import { computeCoherenceIndex, classifyBand } from "./metrics/coherence-index.js";
+import { computeCoherenceIndex, classifyBand, DEFAULT_INVERTED } from "./metrics/coherence-index.js";
 
 /** Options for creating a PreExec sensor. */
 export interface PreExecSensorOptions {
@@ -27,6 +28,8 @@ export interface PreExecSensorOptions {
    * Default: [goalDrift, memoryRetention, contradictionPressure, semanticDiffusion]
    */
   metrics?: MetricFn[];
+  /** Scalar metrics (no embeddings needed). Async-safe. */
+  scalarMetrics?: ScalarMetricFn[];
   /** Weights for coherence index computation. */
   weights?: MetricWeights;
   /** Band classification thresholds. */
@@ -65,6 +68,7 @@ export function createPreExecSensor(options: PreExecSensorOptions): PreExecSenso
     embedder,
     state,
     metrics = DEFAULT_METRICS,
+    scalarMetrics = [],
     weights = DEFAULT_WEIGHTS,
     thresholds = DEFAULT_THRESHOLDS,
     onReading,
@@ -107,16 +111,44 @@ export function createPreExecSensor(options: PreExecSensorOptions): PreExecSenso
         goalRelevantMemoryEmbeddings: lookup(goalRelevantMemories),
       };
 
-      // 3. Compute metrics via strategy pattern
-      // Only populate snapshot with metrics that are actually computed
+      // 3. Compute embedding metrics via strategy pattern
       const snapshot = {} as MetricSnapshot;
 
       for (const metric of metrics) {
         snapshot[metric.name] = metric.compute(input);
       }
 
-      // 4. Compute coherence index and classify
-      const coherenceIndex = computeCoherenceIndex(snapshot, weights);
+      // 3b. Compute scalar metrics (async, in parallel)
+      if (scalarMetrics.length > 0) {
+        const scalarResults = await Promise.all(
+          scalarMetrics.map(async (m) => ({
+            name: m.name,
+            value: await m.compute(),
+          })),
+        );
+        for (const { name, value } of scalarResults) {
+          snapshot[name] = value;
+        }
+      }
+
+      // 4. Build inverted set from metric declarations
+      // If ANY metric declares inverted, use the declared set.
+      // Otherwise fall back to DEFAULT_INVERTED for backwards compat.
+      const anyDeclared = metrics.some((m) => m.inverted !== undefined)
+        || scalarMetrics.some((m) => m.inverted !== undefined);
+
+      let invertedSet: ReadonlySet<string>;
+      if (anyDeclared) {
+        const set = new Set<string>();
+        for (const m of metrics) { if (m.inverted) set.add(m.name); }
+        for (const m of scalarMetrics) { if (m.inverted) set.add(m.name); }
+        invertedSet = set;
+      } else {
+        invertedSet = DEFAULT_INVERTED;
+      }
+
+      // 5. Compute coherence index and classify
+      const coherenceIndex = computeCoherenceIndex(snapshot, weights, invertedSet);
       const band = classifyBand(coherenceIndex, thresholds);
 
       const reading: CoherenceReading = {
@@ -127,13 +159,13 @@ export function createPreExecSensor(options: PreExecSensorOptions): PreExecSenso
         band,
       };
 
-      // 5. Store in ring buffer
+      // 6. Store in ring buffer
       readings.push(reading);
       if (readings.length > historySize) {
         readings.shift();
       }
 
-      // 6. Notify callback
+      // 7. Notify callback
       if (onReading) {
         await onReading(reading);
       }

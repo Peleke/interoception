@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeCoherenceIndex, classifyBand } from "./coherence-index.js";
+import { computeCoherenceIndex, classifyBand, DEFAULT_INVERTED } from "./coherence-index.js";
 import type { MetricSnapshot } from "../types.js";
 
 describe("computeCoherenceIndex", () => {
@@ -66,6 +66,66 @@ describe("computeCoherenceIndex", () => {
       semanticDiffusion: 0.5,
     };
     expect(computeCoherenceIndex(metrics, {})).toBe(1);
+  });
+
+  describe("custom invertedMetrics parameter", () => {
+    it("uses custom inverted set instead of default", () => {
+      const metrics: MetricSnapshot = {
+        goalDrift: 0,
+        memoryRetention: 1,
+        contradictionPressure: 0,
+        semanticDiffusion: 0,
+        customBadMetric: 0.8,
+      };
+      // Only customBadMetric is inverted
+      const invertedSet = new Set(["customBadMetric"]);
+      const weights = { customBadMetric: 1 };
+      // 0.8 inverted → 0.2
+      expect(computeCoherenceIndex(metrics, weights, invertedSet)).toBeCloseTo(0.2);
+    });
+
+    it("empty inverted set treats all metrics as direct", () => {
+      const metrics: MetricSnapshot = {
+        goalDrift: 0.7,
+        memoryRetention: 0.3,
+        contradictionPressure: 0,
+        semanticDiffusion: 0,
+      };
+      // goalDrift NOT inverted → direct value 0.7
+      const weights = { goalDrift: 1 };
+      expect(computeCoherenceIndex(metrics, weights, new Set())).toBeCloseTo(0.7);
+    });
+
+    it("works with scalar metric names in inverted set", () => {
+      const metrics: MetricSnapshot = {
+        goalDrift: 0,
+        memoryRetention: 1,
+        contradictionPressure: 0,
+        semanticDiffusion: 0,
+        compactionPressure: 0.6,
+        contextSaturation: 0.4,
+      };
+      const invertedSet = new Set([
+        "goalDrift", "contradictionPressure", "semanticDiffusion",
+        "compactionPressure", "contextSaturation",
+      ]);
+      const weights = { compactionPressure: 0.5, contextSaturation: 0.5 };
+      // compactionPressure: 1-0.6=0.4, contextSaturation: 1-0.4=0.6
+      // weighted: (0.4*0.5 + 0.6*0.5) / 1.0 = 0.5
+      expect(computeCoherenceIndex(metrics, weights, invertedSet)).toBeCloseTo(0.5);
+    });
+  });
+});
+
+describe("DEFAULT_INVERTED", () => {
+  it("contains the three inverted core metrics", () => {
+    expect(DEFAULT_INVERTED.has("goalDrift")).toBe(true);
+    expect(DEFAULT_INVERTED.has("contradictionPressure")).toBe(true);
+    expect(DEFAULT_INVERTED.has("semanticDiffusion")).toBe(true);
+  });
+
+  it("does not contain memoryRetention", () => {
+    expect(DEFAULT_INVERTED.has("memoryRetention")).toBe(false);
   });
 });
 

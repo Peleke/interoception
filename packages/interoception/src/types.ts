@@ -113,8 +113,25 @@ export interface MetricInput {
 export interface MetricFn {
   /** Metric name, used as key in MetricSnapshot. */
   name: string;
+  /** If true, higher values = less coherent (inverted during index computation). */
+  inverted?: boolean;
   /** Compute the metric value from embeddings. Must return a value in [0, 1]. */
   compute(input: MetricInput): number;
+}
+
+/**
+ * A scalar metric that reads directly from agent state (no embeddings).
+ * Async because it may query databases, APIs, etc.
+ * Closes over its own dependencies at construction time.
+ * Returns a value in [0, 1]. Must noop (return 0) if its data source is unavailable.
+ */
+export interface ScalarMetricFn {
+  /** Metric name, used as key in MetricSnapshot. */
+  name: string;
+  /** If true, higher values = less coherent (inverted during index computation). */
+  inverted?: boolean;
+  /** Compute the metric value. Must return a value in [0, 1]. */
+  compute(): number | Promise<number>;
 }
 
 // ---------------------------------------------------------------------------

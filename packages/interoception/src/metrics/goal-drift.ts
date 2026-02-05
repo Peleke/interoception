@@ -25,6 +25,7 @@ export function computeGoalDrift(
 /** Goal drift as a pluggable MetricFn. */
 export const goalDriftMetric: MetricFn = {
   name: "goalDrift",
+  inverted: true,
   compute(input: MetricInput): number {
     return computeGoalDrift(input.goalEmbeddings, input.contextEmbeddings);
   },
