@@ -1,16 +1,13 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { computeCoherenceIndex, classifyBand, DEFAULT_INVERTED } from "./coherence-index.js";
+import { computeCoherenceIndex, classifyBand } from "./coherence-index.js";
 import type { MetricSnapshot, MetricWeights } from "../types.js";
 
-/**
- * Arbitrary for a valid metric value in [0, 1].
- */
+/** Inverted set matching core metric polarity declarations. */
+const CORE_INVERTED = new Set(["goalDrift", "contradictionPressure", "semanticDiffusion"]);
+
 const metricValue = fc.double({ min: 0, max: 1, noNaN: true });
 
-/**
- * Arbitrary for a standard 4-metric snapshot.
- */
 const standardSnapshot = fc.record({
   goalDrift: metricValue,
   memoryRetention: metricValue,
@@ -18,14 +15,8 @@ const standardSnapshot = fc.record({
   semanticDiffusion: metricValue,
 }) as fc.Arbitrary<MetricSnapshot>;
 
-/**
- * Arbitrary for a positive weight in (0, 1].
- */
 const positiveWeight = fc.double({ min: 0.01, max: 1, noNaN: true });
 
-/**
- * Arbitrary for standard weights (all four core metrics).
- */
 const standardWeights = fc.record({
   goalDrift: positiveWeight,
   memoryRetention: positiveWeight,
@@ -37,7 +28,7 @@ describe("computeCoherenceIndex — property tests", () => {
   it("always returns a value in [0, 1]", () => {
     fc.assert(
       fc.property(standardSnapshot, standardWeights, (metrics, weights) => {
-        const index = computeCoherenceIndex(metrics, weights);
+        const index = computeCoherenceIndex(metrics, weights, CORE_INVERTED);
         expect(index).toBeGreaterThanOrEqual(0);
         expect(index).toBeLessThanOrEqual(1);
       }),
@@ -53,7 +44,7 @@ describe("computeCoherenceIndex — property tests", () => {
           contradictionPressure: 0,
           semanticDiffusion: 0,
         };
-        expect(computeCoherenceIndex(perfect, weights)).toBeCloseTo(1, 5);
+        expect(computeCoherenceIndex(perfect, weights, CORE_INVERTED)).toBeCloseTo(1, 5);
       }),
     );
   });
@@ -67,7 +58,7 @@ describe("computeCoherenceIndex — property tests", () => {
           contradictionPressure: 1,
           semanticDiffusion: 1,
         };
-        expect(computeCoherenceIndex(worst, weights)).toBeCloseTo(0, 5);
+        expect(computeCoherenceIndex(worst, weights, CORE_INVERTED)).toBeCloseTo(0, 5);
       }),
     );
   });
@@ -80,26 +71,23 @@ describe("computeCoherenceIndex — property tests", () => {
         fc.constantFrom("goalDrift", "memoryRetention", "contradictionPressure", "semanticDiffusion"),
         fc.double({ min: 0.01, max: 0.5, noNaN: true }),
         (metrics, weights, metricName, delta) => {
-          const original = computeCoherenceIndex(metrics, weights);
+          const original = computeCoherenceIndex(metrics, weights, CORE_INVERTED);
 
           const improved = { ...metrics };
-          if (DEFAULT_INVERTED.has(metricName)) {
-            // Inverted: decrease = improve
+          if (CORE_INVERTED.has(metricName)) {
             improved[metricName] = Math.max(0, metrics[metricName]! - delta);
           } else {
-            // Direct: increase = improve
             improved[metricName] = Math.min(1, metrics[metricName]! + delta);
           }
 
-          const after = computeCoherenceIndex(improved, weights);
-          // Improving a metric should not decrease the index
+          const after = computeCoherenceIndex(improved, weights, CORE_INVERTED);
           expect(after).toBeGreaterThanOrEqual(original - 1e-10);
         },
       ),
     );
   });
 
-  it("custom inverted set: inverting all metrics returns same as not inverting with flipped values", () => {
+  it("inverting a metric and flipping its value preserves the index", () => {
     fc.assert(
       fc.property(
         fc.double({ min: 0, max: 1, noNaN: true }),
@@ -116,7 +104,6 @@ describe("computeCoherenceIndex — property tests", () => {
           const direct = computeCoherenceIndex(metrics, weights, new Set());
           const inverted = computeCoherenceIndex(metrics, weights, new Set(["custom"]));
 
-          // inverted(value) = 1 - direct(value)
           expect(inverted).toBeCloseTo(1 - direct, 5);
         },
       ),
@@ -132,12 +119,12 @@ describe("computeCoherenceIndex — metamorphic tests", () => {
         standardWeights,
         fc.double({ min: 0.1, max: 100, noNaN: true }),
         (metrics, weights, scale) => {
-          const original = computeCoherenceIndex(metrics, weights);
+          const original = computeCoherenceIndex(metrics, weights, CORE_INVERTED);
           const scaled: MetricWeights = {};
           for (const [k, v] of Object.entries(weights)) {
             scaled[k] = v! * scale;
           }
-          const after = computeCoherenceIndex(metrics, scaled);
+          const after = computeCoherenceIndex(metrics, scaled, CORE_INVERTED);
           expect(after).toBeCloseTo(original, 5);
         },
       ),
@@ -158,22 +145,20 @@ describe("computeCoherenceIndex — metamorphic tests", () => {
             contradictionPressure: cp,
             semanticDiffusion: sd,
           };
-          // Swap goalDrift and contradictionPressure values
           const snapshotB: MetricSnapshot = {
             goalDrift: cp,
             memoryRetention: mr,
             contradictionPressure: gd,
             semanticDiffusion: sd,
           };
-          // With equal weights, both inverted → same contribution
           const equalWeights: MetricWeights = {
             goalDrift: 0.25,
             memoryRetention: 0.25,
             contradictionPressure: 0.25,
             semanticDiffusion: 0.25,
           };
-          const indexA = computeCoherenceIndex(snapshotA, equalWeights);
-          const indexB = computeCoherenceIndex(snapshotB, equalWeights);
+          const indexA = computeCoherenceIndex(snapshotA, equalWeights, CORE_INVERTED);
+          const indexB = computeCoherenceIndex(snapshotB, equalWeights, CORE_INVERTED);
           expect(indexA).toBeCloseTo(indexB, 5);
         },
       ),
@@ -192,9 +177,9 @@ describe("computeCoherenceIndex — metamorphic tests", () => {
             contradictionPressure: 0,
             semanticDiffusion: 0,
           };
-          const original = computeCoherenceIndex(metrics, weights);
+          const original = computeCoherenceIndex(metrics, weights, CORE_INVERTED);
           const modified = { ...metrics, goalDrift: newValue };
-          const after = computeCoherenceIndex(modified, weights);
+          const after = computeCoherenceIndex(modified, weights, CORE_INVERTED);
           expect(after).toBeCloseTo(original, 5);
         },
       ),
@@ -204,16 +189,15 @@ describe("computeCoherenceIndex — metamorphic tests", () => {
   it("additivity: index is a weighted average of individual metric contributions", () => {
     fc.assert(
       fc.property(standardSnapshot, standardWeights, (metrics, weights) => {
-        const combined = computeCoherenceIndex(metrics, weights);
+        const combined = computeCoherenceIndex(metrics, weights, CORE_INVERTED);
 
-        // Compute each metric's contribution individually
         let expectedSum = 0;
         let totalWeight = 0;
         for (const [key, weight] of Object.entries(weights)) {
           if (!weight) continue;
           const value = metrics[key];
           if (value === undefined) continue;
-          const coherenceValue = DEFAULT_INVERTED.has(key) ? 1 - value : value;
+          const coherenceValue = CORE_INVERTED.has(key) ? 1 - value : value;
           expectedSum += coherenceValue * weight;
           totalWeight += weight;
         }

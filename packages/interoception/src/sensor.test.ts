@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 import { createPreExecSensor, DEFAULT_METRICS } from "./sensor.js";
-import { DEFAULT_INVERTED } from "./metrics/coherence-index.js";
 import type {
   Embedder,
   StateProvider,
@@ -569,10 +568,9 @@ describe("createPreExecSensor", () => {
       expect(reading.coherenceIndex).toBeCloseTo(0.633, 2);
     });
 
-    it("falls back to DEFAULT_INVERTED when no metric declares inverted", async () => {
-      // Custom metrics without inverted flag → use DEFAULT_INVERTED
+    it("metric without inverted flag is treated as direct (not inverted)", async () => {
       const customMetric: MetricFn = {
-        name: "goalDrift", // same name as default inverted metric
+        name: "goalDrift", // no inverted flag = direct
         compute: () => 0.8,
       };
 
@@ -584,19 +582,18 @@ describe("createPreExecSensor", () => {
       });
 
       const reading = await sensor.measure(makeTick(0));
-      // goalDrift is in DEFAULT_INVERTED → 1 - 0.8 = 0.2
-      expect(reading.coherenceIndex).toBeCloseTo(0.2);
+      // no inverted flag → direct: 0.8
+      expect(reading.coherenceIndex).toBeCloseTo(0.8);
     });
 
-    it("uses declared set (not DEFAULT_INVERTED) when any metric has inverted flag", async () => {
-      // One metric declares inverted, another doesn't → only declared ones are inverted
+    it("only metrics with inverted: true are inverted", async () => {
       const metricA: MetricFn = {
-        name: "goalDrift", // would be in DEFAULT_INVERTED, but no flag
-        compute: () => 0.8,
+        name: "signal",
+        compute: () => 0.8, // no inverted flag → direct
       };
 
       const metricB: MetricFn = {
-        name: "customInverted",
+        name: "noise",
         inverted: true,
         compute: () => 0.5,
       };
@@ -605,30 +602,19 @@ describe("createPreExecSensor", () => {
         embedder: createMockEmbedder(),
         state: createMockState(),
         metrics: [metricA, metricB],
-        weights: { goalDrift: 0.5, customInverted: 0.5 },
+        weights: { signal: 0.5, noise: 0.5 },
       });
 
       const reading = await sensor.measure(makeTick(0));
-      // metricB declares inverted → triggers declared-set mode
-      // goalDrift: no inverted flag → NOT in declared set → direct: 0.8
-      // customInverted: inverted → 1-0.5 = 0.5
+      // signal: direct → 0.8
+      // noise: inverted → 1-0.5 = 0.5
       // weighted: (0.8*0.5 + 0.5*0.5) / 1.0 = 0.65
       expect(reading.coherenceIndex).toBeCloseTo(0.65);
     });
   });
 
-  describe("backwards compatibility", () => {
-    it("DEFAULT_INVERTED is consistent with DEFAULT_METRICS inverted flags", () => {
-      for (const metric of DEFAULT_METRICS) {
-        if (metric.inverted) {
-          expect(DEFAULT_INVERTED.has(metric.name)).toBe(true);
-        } else {
-          expect(DEFAULT_INVERTED.has(metric.name)).toBe(false);
-        }
-      }
-    });
-
-    it("default metrics still declare correct polarity", async () => {
+  describe("defaults", () => {
+    it("default metrics declare correct polarity", async () => {
       // DEFAULT_METRICS now have inverted flags — sensor should use them
       const sensor = createPreExecSensor({
         embedder: createMockEmbedder(),

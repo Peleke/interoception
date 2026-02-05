@@ -15,7 +15,7 @@ import { goalDriftMetric } from "./metrics/goal-drift.js";
 import { memoryRetentionMetric } from "./metrics/memory-retention.js";
 import { contradictionPressureMetric } from "./metrics/contradiction-pressure.js";
 import { semanticDiffusionMetric } from "./metrics/semantic-diffusion.js";
-import { computeCoherenceIndex, classifyBand, DEFAULT_INVERTED } from "./metrics/coherence-index.js";
+import { computeCoherenceIndex, classifyBand } from "./metrics/coherence-index.js";
 
 /** Options for creating a PreExec sensor. */
 export interface PreExecSensorOptions {
@@ -132,20 +132,9 @@ export function createPreExecSensor(options: PreExecSensorOptions): PreExecSenso
       }
 
       // 4. Build inverted set from metric declarations
-      // If ANY metric declares inverted, use the declared set.
-      // Otherwise fall back to DEFAULT_INVERTED for backwards compat.
-      const anyDeclared = metrics.some((m) => m.inverted !== undefined)
-        || scalarMetrics.some((m) => m.inverted !== undefined);
-
-      let invertedSet: ReadonlySet<string>;
-      if (anyDeclared) {
-        const set = new Set<string>();
-        for (const m of metrics) { if (m.inverted) set.add(m.name); }
-        for (const m of scalarMetrics) { if (m.inverted) set.add(m.name); }
-        invertedSet = set;
-      } else {
-        invertedSet = DEFAULT_INVERTED;
-      }
+      const invertedSet = new Set<string>();
+      for (const m of metrics) { if (m.inverted) invertedSet.add(m.name); }
+      for (const m of scalarMetrics) { if (m.inverted) invertedSet.add(m.name); }
 
       // 5. Compute coherence index and classify
       const coherenceIndex = computeCoherenceIndex(snapshot, weights, invertedSet);

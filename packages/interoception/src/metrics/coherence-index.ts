@@ -7,25 +7,19 @@ import type {
 import { DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS } from "../types.js";
 import { clamp01 } from "./util.js";
 
-/** Metrics where higher = worse (inverted for coherence index). */
-export const DEFAULT_INVERTED: ReadonlySet<string> = new Set([
-  "goalDrift",
-  "contradictionPressure",
-  "semanticDiffusion",
-]);
-
 /**
  * Compute the coherence index from a metric snapshot.
  *
- * The coherence index inverts "bad" metrics (where higher = less coherent)
- * and keeps "good" metrics (where higher = more coherent).
+ * Metrics in the `invertedMetrics` set are flipped (1 - value) so that
+ * higher index always means more coherent. Metrics not in the set are
+ * used directly (higher = more coherent).
  *
  * Result: 0 = incoherent, 1 = coherent.
  */
 export function computeCoherenceIndex(
   metrics: MetricSnapshot,
   weights: MetricWeights = DEFAULT_WEIGHTS,
-  invertedMetrics: ReadonlySet<string> = DEFAULT_INVERTED,
+  invertedMetrics: ReadonlySet<string> = new Set(),
 ): number {
   let weightedSum = 0;
   let totalWeight = 0;

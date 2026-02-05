@@ -27,7 +27,7 @@ export { computeGoalDrift, goalDriftMetric } from "./metrics/goal-drift.js";
 export { computeMemoryRetention, memoryRetentionMetric } from "./metrics/memory-retention.js";
 export { computeContradictionPressure, contradictionPressureMetric } from "./metrics/contradiction-pressure.js";
 export { computeSemanticDiffusion, semanticDiffusionMetric } from "./metrics/semantic-diffusion.js";
-export { computeCoherenceIndex, classifyBand, DEFAULT_INVERTED } from "./metrics/coherence-index.js";
+export { computeCoherenceIndex, classifyBand } from "./metrics/coherence-index.js";
 
 // Vector utilities
 export { cosineSimilarity, normalize, dot, magnitude, mean, clamp01 } from "./metrics/util.js";
