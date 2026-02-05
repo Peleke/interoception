@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createPreExecSensor, DEFAULT_METRICS } from "./sensor.js";
+import { DEFAULT_INVERTED } from "./metrics/coherence-index.js";
 import type {
   Embedder,
   StateProvider,
@@ -617,6 +618,16 @@ describe("createPreExecSensor", () => {
   });
 
   describe("backwards compatibility", () => {
+    it("DEFAULT_INVERTED is consistent with DEFAULT_METRICS inverted flags", () => {
+      for (const metric of DEFAULT_METRICS) {
+        if (metric.inverted) {
+          expect(DEFAULT_INVERTED.has(metric.name)).toBe(true);
+        } else {
+          expect(DEFAULT_INVERTED.has(metric.name)).toBe(false);
+        }
+      }
+    });
+
     it("default metrics still declare correct polarity", async () => {
       // DEFAULT_METRICS now have inverted flags — sensor should use them
       const sensor = createPreExecSensor({
@@ -649,6 +660,20 @@ describe("createPreExecSensor", () => {
       expect(typeof reading.metrics.semanticDiffusion).toBe("number");
       expect(reading.coherenceIndex).toBeGreaterThanOrEqual(0);
       expect(reading.coherenceIndex).toBeLessThanOrEqual(1);
+    });
+  });
+
+  describe("onReading error behavior", () => {
+    it("stores reading in history even if onReading throws", async () => {
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        onReading: () => { throw new Error("callback failed"); },
+      });
+
+      await sensor.measure(makeTick(0)).catch(() => {});
+      // Reading was pushed to history before onReading was called
+      expect(sensor.history()).toHaveLength(1);
     });
   });
 });
