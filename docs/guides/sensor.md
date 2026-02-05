@@ -22,7 +22,8 @@ console.log(reading.band); // "green" | "yellow" | "orange" | "red"
 |--------|------|---------|-------------|
 | `embedder` | `Embedder` | — | Embedding provider (required) |
 | `state` | `StateProvider` | — | Agent state provider (required) |
-| `metrics` | `MetricFn[]` | `DEFAULT_METRICS` | Metric functions to run |
+| `metrics` | `MetricFn[]` | `DEFAULT_METRICS` | Embedding-based metrics |
+| `scalarMetrics` | `ScalarMetricFn[]` | `[]` | Scalar metrics (no embeddings) |
 | `weights` | `MetricWeights` | `DEFAULT_WEIGHTS` | Weights for coherence index |
 | `thresholds` | `BandThresholds` | `DEFAULT_THRESHOLDS` | Band classification thresholds |
 | `onReading` | `(reading: CoherenceReading) => void \| Promise<void>` | — | Callback after each reading |
@@ -83,6 +84,7 @@ import {
 
 const myCustomMetric: MetricFn = {
   name: "taskProgress",
+  inverted: false, // Higher = more coherent
   compute(input) {
     // Your custom logic using embeddings
     return 0.75;
@@ -97,6 +99,36 @@ const sensor = createPreExecSensor({
     goalDrift: 0.3,
     memoryRetention: 0.3,
     taskProgress: 0.4,
+  },
+});
+```
+
+## Scalar Metrics
+
+Add metrics that don't need embeddings:
+
+```typescript
+import type { ScalarMetricFn } from "@peleke.s/interoception";
+
+const tokenBudget: ScalarMetricFn = {
+  name: "tokenBudget",
+  inverted: true, // High usage = less coherent
+  async compute() {
+    const usage = await getTokenUsage();
+    return usage / maxTokens; // 0–1
+  },
+};
+
+const sensor = createPreExecSensor({
+  embedder,
+  state,
+  scalarMetrics: [tokenBudget],
+  weights: {
+    goalDrift: 0.2,
+    memoryRetention: 0.2,
+    contradictionPressure: 0.2,
+    semanticDiffusion: 0.2,
+    tokenBudget: 0.2,
   },
 });
 ```
