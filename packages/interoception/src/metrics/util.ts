@@ -3,8 +3,13 @@
  * All functions are pure — no side effects.
  */
 
-/** Compute dot product of two vectors. Vectors must be same length. */
+/** Compute dot product of two vectors. Throws if lengths differ. */
 export function dot(a: number[], b: number[]): number {
+  if (a.length !== b.length) {
+    throw new Error(
+      `dot: dimension mismatch (${a.length} vs ${b.length})`,
+    );
+  }
   let sum = 0;
   for (let i = 0; i < a.length; i++) {
     sum += a[i]! * b[i]!;

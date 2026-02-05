@@ -238,6 +238,46 @@ describe("createPreExecSensor", () => {
     });
   });
 
+  describe("error propagation", () => {
+    it("propagates embedder errors to caller", async () => {
+      const sensor = createPreExecSensor({
+        embedder: {
+          dimensions: 4,
+          embed: async () => { throw new Error("embedding service down"); },
+          embedBatch: async () => { throw new Error("embedding service down"); },
+        },
+        state: createMockState(),
+      });
+
+      await expect(sensor.measure(makeTick(0))).rejects.toThrow("embedding service down");
+    });
+
+    it("propagates state provider errors to caller", async () => {
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState({
+          getGoals: async () => { throw new Error("state unavailable"); },
+        }),
+      });
+
+      await expect(sensor.measure(makeTick(0))).rejects.toThrow("state unavailable");
+    });
+
+    it("does not store reading in history on error", async () => {
+      const sensor = createPreExecSensor({
+        embedder: {
+          dimensions: 4,
+          embed: async () => { throw new Error("fail"); },
+          embedBatch: async () => { throw new Error("fail"); },
+        },
+        state: createMockState(),
+      });
+
+      await sensor.measure(makeTick(0)).catch(() => {});
+      expect(sensor.history()).toHaveLength(0);
+    });
+  });
+
   describe("edge cases", () => {
     it("handles empty state gracefully", async () => {
       const sensor = createPreExecSensor({

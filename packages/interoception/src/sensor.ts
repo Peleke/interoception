@@ -108,12 +108,8 @@ export function createPreExecSensor(options: PreExecSensorOptions): PreExecSenso
       };
 
       // 3. Compute metrics via strategy pattern
-      const snapshot: MetricSnapshot = {
-        goalDrift: 0,
-        memoryRetention: 0,
-        contradictionPressure: 0,
-        semanticDiffusion: 0,
-      };
+      // Only populate snapshot with metrics that are actually computed
+      const snapshot = {} as MetricSnapshot;
 
       for (const metric of metrics) {
         snapshot[metric.name] = metric.compute(input);

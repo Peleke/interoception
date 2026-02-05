@@ -37,6 +37,18 @@ describe("computeContradictionPressure", () => {
     expect(pressure).toBeLessThan(1);
   });
 
+  it("is permutation invariant", () => {
+    const a = [1, 0];
+    const b = [0.5, 0.5];
+    const c = [0, 1];
+    expect(computeContradictionPressure([a, b, c])).toBe(
+      computeContradictionPressure([c, a, b]),
+    );
+    expect(computeContradictionPressure([a, b, c])).toBe(
+      computeContradictionPressure([b, c, a]),
+    );
+  });
+
   it("respects custom threshold", () => {
     const embeddings = [[1, 0], [0.8, 0.6]];
     // Sim ≈ 0.8, low threshold passes, high threshold fails

@@ -3,8 +3,6 @@
  *
  * Proves the full pipeline works:
  * TestClock ticks → sensor.measure(tick) → CoherenceReading with band
- *
- * This is the "show her your work" test.
  */
 import { describe, it, expect } from "vitest";
 import { createTestClock } from "@peleke.s/cadence";

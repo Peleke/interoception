@@ -9,6 +9,10 @@ describe("dot", () => {
   it("returns 0 for orthogonal vectors", () => {
     expect(dot([1, 0], [0, 1])).toBe(0);
   });
+
+  it("throws on dimension mismatch", () => {
+    expect(() => dot([1, 2, 3], [4, 5])).toThrow("dimension mismatch (3 vs 2)");
+  });
 });
 
 describe("magnitude", () => {

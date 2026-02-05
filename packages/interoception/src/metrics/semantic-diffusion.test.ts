@@ -18,6 +18,18 @@ describe("computeSemanticDiffusion", () => {
     expect(computeSemanticDiffusion([[1, 0], [0, 1]])).toBeCloseTo(1);
   });
 
+  it("is permutation invariant", () => {
+    const a = [1, 0];
+    const b = [0.7, 0.7];
+    const c = [0, 1];
+    expect(computeSemanticDiffusion([a, b, c])).toBe(
+      computeSemanticDiffusion([c, a, b]),
+    );
+    expect(computeSemanticDiffusion([a, b, c])).toBe(
+      computeSemanticDiffusion([b, c, a]),
+    );
+  });
+
   it("returns intermediate value for partially spread embeddings", () => {
     const embeddings = [[1, 0], [0.7, 0.7], [1, 0.1]];
     const diffusion = computeSemanticDiffusion(embeddings);
