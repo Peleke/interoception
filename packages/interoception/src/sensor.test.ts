@@ -3,9 +3,9 @@ import { createPreExecSensor, DEFAULT_METRICS } from "./sensor.js";
 import type {
   Embedder,
   StateProvider,
-  CoherenceReading,
   MetricFn,
   MetricInput,
+  ScalarMetricFn,
 } from "./types.js";
 import type { Tick } from "@peleke.s/cadence";
 
@@ -302,6 +302,364 @@ describe("createPreExecSensor", () => {
       // (1 + 0 + 1 + 1) * 0.25 = 0.75
       expect(reading.coherenceIndex).toBeCloseTo(0.75);
       expect(reading.band).toBe("yellow");
+    });
+  });
+
+  describe("scalar metrics", () => {
+    it("runs scalar-only sensor (no embedding metrics)", async () => {
+      const scalar: ScalarMetricFn = {
+        name: "compactionPressure",
+        inverted: true,
+        compute: () => 0.3,
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        metrics: [],
+        scalarMetrics: [scalar],
+        weights: { compactionPressure: 1 },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      expect(reading.metrics["compactionPressure"]).toBe(0.3);
+      // inverted: 1 - 0.3 = 0.7
+      expect(reading.coherenceIndex).toBeCloseTo(0.7);
+    });
+
+    it("runs mixed embedding + scalar metrics", async () => {
+      const scalar: ScalarMetricFn = {
+        name: "contextSaturation",
+        inverted: true,
+        compute: () => 0.5,
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        scalarMetrics: [scalar],
+        weights: {
+          goalDrift: 0.2,
+          memoryRetention: 0.2,
+          contradictionPressure: 0.2,
+          semanticDiffusion: 0.2,
+          contextSaturation: 0.2,
+        },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      expect(typeof reading.metrics.goalDrift).toBe("number");
+      expect(reading.metrics["contextSaturation"]).toBe(0.5);
+    });
+
+    it("handles async scalar metrics", async () => {
+      const asyncScalar: ScalarMetricFn = {
+        name: "toolUncertainty",
+        inverted: true,
+        compute: async () => {
+          // Simulate async DB read
+          await new Promise((r) => setTimeout(r, 1));
+          return 0.7;
+        },
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        metrics: [],
+        scalarMetrics: [asyncScalar],
+        weights: { toolUncertainty: 1 },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      expect(reading.metrics["toolUncertainty"]).toBe(0.7);
+      // inverted: 1 - 0.7 = 0.3
+      expect(reading.coherenceIndex).toBeCloseTo(0.3);
+    });
+
+    it("handles scalar metric that noops (returns 0)", async () => {
+      const noopScalar: ScalarMetricFn = {
+        name: "compactionPressure",
+        inverted: true,
+        compute: () => 0, // data source unavailable → noop
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        metrics: [],
+        scalarMetrics: [noopScalar],
+        weights: { compactionPressure: 1 },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      expect(reading.metrics["compactionPressure"]).toBe(0);
+      // inverted: 1 - 0 = 1 (fresh context = fully coherent)
+      expect(reading.coherenceIndex).toBeCloseTo(1);
+    });
+
+    it("runs multiple scalar metrics in parallel", async () => {
+      const callOrder: string[] = [];
+
+      const scalar1: ScalarMetricFn = {
+        name: "compactionPressure",
+        inverted: true,
+        compute: async () => {
+          callOrder.push("start-compaction");
+          await new Promise((r) => setTimeout(r, 10));
+          callOrder.push("end-compaction");
+          return 0.4;
+        },
+      };
+
+      const scalar2: ScalarMetricFn = {
+        name: "contextSaturation",
+        inverted: true,
+        compute: async () => {
+          callOrder.push("start-saturation");
+          await new Promise((r) => setTimeout(r, 10));
+          callOrder.push("end-saturation");
+          return 0.6;
+        },
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        metrics: [],
+        scalarMetrics: [scalar1, scalar2],
+        weights: { compactionPressure: 0.5, contextSaturation: 0.5 },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      expect(reading.metrics["compactionPressure"]).toBe(0.4);
+      expect(reading.metrics["contextSaturation"]).toBe(0.6);
+
+      // Both should start before either ends (parallel execution)
+      expect(callOrder.indexOf("start-compaction")).toBeLessThan(callOrder.indexOf("end-saturation"));
+      expect(callOrder.indexOf("start-saturation")).toBeLessThan(callOrder.indexOf("end-compaction"));
+    });
+
+    it("propagates scalar metric errors to caller", async () => {
+      const failingScalar: ScalarMetricFn = {
+        name: "broken",
+        compute: async () => { throw new Error("DB connection failed"); },
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        metrics: [],
+        scalarMetrics: [failingScalar],
+        weights: { broken: 1 },
+      });
+
+      await expect(sensor.measure(makeTick(0))).rejects.toThrow("DB connection failed");
+    });
+
+    it("does not call embedder when only scalar metrics are used with empty state", async () => {
+      const embedBatch = vi.fn(async (texts: string[]) =>
+        texts.map(() => [0.5, 0.5, 0.5, 0.5]),
+      );
+
+      const scalar: ScalarMetricFn = {
+        name: "contextSaturation",
+        inverted: true,
+        compute: () => 0.2,
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: {
+          dimensions: 4,
+          embed: async () => [0.5, 0.5, 0.5, 0.5],
+          embedBatch,
+        },
+        state: createMockState({
+          getGoals: async () => [],
+          getRecentContext: async () => [],
+          getGoalRelevantMemories: async () => [],
+          getAllMemories: async () => [],
+        }),
+        metrics: [],
+        scalarMetrics: [scalar],
+        weights: { contextSaturation: 1 },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      // embedBatch should NOT be called since uniqueTexts is empty
+      expect(embedBatch).not.toHaveBeenCalled();
+      expect(reading.metrics["contextSaturation"]).toBe(0.2);
+    });
+  });
+
+  describe("inverted flag on MetricFn", () => {
+    it("respects inverted: true on embedding metric", async () => {
+      const invertedMetric: MetricFn = {
+        name: "badSignal",
+        inverted: true,
+        compute: () => 0.8, // high = bad
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        metrics: [invertedMetric],
+        weights: { badSignal: 1 },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      expect(reading.metrics["badSignal"]).toBe(0.8);
+      // inverted: 1 - 0.8 = 0.2
+      expect(reading.coherenceIndex).toBeCloseTo(0.2);
+    });
+
+    it("respects inverted: false on embedding metric (direct value)", async () => {
+      const directMetric: MetricFn = {
+        name: "goodSignal",
+        inverted: false,
+        compute: () => 0.8, // high = good
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        metrics: [directMetric],
+        weights: { goodSignal: 1 },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      expect(reading.metrics["goodSignal"]).toBe(0.8);
+      // not inverted: 0.8
+      expect(reading.coherenceIndex).toBeCloseTo(0.8);
+    });
+
+    it("builds inverted set from both MetricFn and ScalarMetricFn", async () => {
+      const embeddingMetric: MetricFn = {
+        name: "drift",
+        inverted: true,
+        compute: () => 0.6,
+      };
+
+      const scalarMetric: ScalarMetricFn = {
+        name: "pressure",
+        inverted: true,
+        compute: () => 0.4,
+      };
+
+      const directScalar: ScalarMetricFn = {
+        name: "quality",
+        inverted: false,
+        compute: () => 0.9,
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        metrics: [embeddingMetric],
+        scalarMetrics: [scalarMetric, directScalar],
+        weights: { drift: 1/3, pressure: 1/3, quality: 1/3 },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      // drift: inverted → 1-0.6=0.4
+      // pressure: inverted → 1-0.4=0.6
+      // quality: direct → 0.9
+      // weighted avg: (0.4 + 0.6 + 0.9) / 3 ≈ 0.633
+      expect(reading.coherenceIndex).toBeCloseTo(0.633, 2);
+    });
+
+    it("metric without inverted flag is treated as direct (not inverted)", async () => {
+      const customMetric: MetricFn = {
+        name: "goalDrift", // no inverted flag = direct
+        compute: () => 0.8,
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        metrics: [customMetric],
+        weights: { goalDrift: 1 },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      // no inverted flag → direct: 0.8
+      expect(reading.coherenceIndex).toBeCloseTo(0.8);
+    });
+
+    it("only metrics with inverted: true are inverted", async () => {
+      const metricA: MetricFn = {
+        name: "signal",
+        compute: () => 0.8, // no inverted flag → direct
+      };
+
+      const metricB: MetricFn = {
+        name: "noise",
+        inverted: true,
+        compute: () => 0.5,
+      };
+
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        metrics: [metricA, metricB],
+        weights: { signal: 0.5, noise: 0.5 },
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      // signal: direct → 0.8
+      // noise: inverted → 1-0.5 = 0.5
+      // weighted: (0.8*0.5 + 0.5*0.5) / 1.0 = 0.65
+      expect(reading.coherenceIndex).toBeCloseTo(0.65);
+    });
+  });
+
+  describe("defaults", () => {
+    it("default metrics declare correct polarity", async () => {
+      // DEFAULT_METRICS now have inverted flags — sensor should use them
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState({
+          getGoals: async () => [],
+          getRecentContext: async () => [],
+          getGoalRelevantMemories: async () => [],
+          getAllMemories: async () => [],
+        }),
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      // All zeros: goalDrift(inv)→1, memRet(direct)→0, contPressure(inv)→1, semDiff(inv)→1
+      // (1+0+1+1)*0.25 = 0.75
+      expect(reading.coherenceIndex).toBeCloseTo(0.75);
+      expect(reading.band).toBe("yellow");
+    });
+
+    it("sensor works identically without scalarMetrics option", async () => {
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+      });
+
+      const reading = await sensor.measure(makeTick(0));
+      expect(typeof reading.metrics.goalDrift).toBe("number");
+      expect(typeof reading.metrics.memoryRetention).toBe("number");
+      expect(typeof reading.metrics.contradictionPressure).toBe("number");
+      expect(typeof reading.metrics.semanticDiffusion).toBe("number");
+      expect(reading.coherenceIndex).toBeGreaterThanOrEqual(0);
+      expect(reading.coherenceIndex).toBeLessThanOrEqual(1);
+    });
+  });
+
+  describe("onReading error behavior", () => {
+    it("stores reading in history even if onReading throws", async () => {
+      const sensor = createPreExecSensor({
+        embedder: createMockEmbedder(),
+        state: createMockState(),
+        onReading: () => { throw new Error("callback failed"); },
+      });
+
+      await sensor.measure(makeTick(0)).catch(() => {});
+      // Reading was pushed to history before onReading was called
+      expect(sensor.history()).toHaveLength(1);
     });
   });
 });

@@ -34,6 +34,7 @@ export function computeContradictionPressure(
 /** Contradiction pressure as a pluggable MetricFn. */
 export const contradictionPressureMetric: MetricFn = {
   name: "contradictionPressure",
+  inverted: true,
   compute(input: MetricInput): number {
     return computeContradictionPressure(input.contextEmbeddings);
   },

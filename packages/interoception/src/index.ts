@@ -12,6 +12,7 @@ export type {
   MetricWeights,
   MetricFn,
   MetricInput,
+  ScalarMetricFn,
   BandThresholds,
   Band,
   CoherenceReading,

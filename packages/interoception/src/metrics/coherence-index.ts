@@ -10,23 +10,17 @@ import { clamp01 } from "./util.js";
 /**
  * Compute the coherence index from a metric snapshot.
  *
- * The coherence index inverts "bad" metrics (goalDrift, contradictionPressure,
- * semanticDiffusion are 0=good, 1=bad) and keeps "good" metrics (memoryRetention
- * is 0=bad, 1=good).
+ * Metrics in the `invertedMetrics` set are flipped (1 - value) so that
+ * higher index always means more coherent. Metrics not in the set are
+ * used directly (higher = more coherent).
  *
  * Result: 0 = incoherent, 1 = coherent.
  */
 export function computeCoherenceIndex(
   metrics: MetricSnapshot,
   weights: MetricWeights = DEFAULT_WEIGHTS,
+  invertedMetrics: ReadonlySet<string> = new Set(),
 ): number {
-  // Metrics where higher = worse (invert them for coherence)
-  const invertedMetrics = new Set([
-    "goalDrift",
-    "contradictionPressure",
-    "semanticDiffusion",
-  ]);
-
   let weightedSum = 0;
   let totalWeight = 0;
 

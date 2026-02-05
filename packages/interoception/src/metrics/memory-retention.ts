@@ -25,6 +25,7 @@ export function computeMemoryRetention(
 /** Memory retention as a pluggable MetricFn. */
 export const memoryRetentionMetric: MetricFn = {
   name: "memoryRetention",
+  inverted: false,
   compute(input: MetricInput): number {
     return computeMemoryRetention(
       input.goalEmbeddings,

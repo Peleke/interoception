@@ -27,6 +27,7 @@ export function computeSemanticDiffusion(
 /** Semantic diffusion as a pluggable MetricFn. */
 export const semanticDiffusionMetric: MetricFn = {
   name: "semanticDiffusion",
+  inverted: true,
   compute(input: MetricInput): number {
     return computeSemanticDiffusion(input.contextEmbeddings);
   },

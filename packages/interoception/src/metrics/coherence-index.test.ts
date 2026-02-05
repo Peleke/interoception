@@ -2,15 +2,18 @@ import { describe, it, expect } from "vitest";
 import { computeCoherenceIndex, classifyBand } from "./coherence-index.js";
 import type { MetricSnapshot } from "../types.js";
 
+/** Standard inverted set matching the core metrics' polarity declarations. */
+const CORE_INVERTED = new Set(["goalDrift", "contradictionPressure", "semanticDiffusion"]);
+
 describe("computeCoherenceIndex", () => {
   it("returns 1 for perfect coherence", () => {
     const metrics: MetricSnapshot = {
-      goalDrift: 0,           // 0 drift = good → inverted to 1
-      memoryRetention: 1,     // 1 = good, not inverted
-      contradictionPressure: 0, // 0 = good → inverted to 1
-      semanticDiffusion: 0,    // 0 = good → inverted to 1
+      goalDrift: 0,
+      memoryRetention: 1,
+      contradictionPressure: 0,
+      semanticDiffusion: 0,
     };
-    expect(computeCoherenceIndex(metrics)).toBeCloseTo(1);
+    expect(computeCoherenceIndex(metrics, undefined, CORE_INVERTED)).toBeCloseTo(1);
   });
 
   it("returns 0 for total incoherence", () => {
@@ -20,7 +23,7 @@ describe("computeCoherenceIndex", () => {
       contradictionPressure: 1,
       semanticDiffusion: 1,
     };
-    expect(computeCoherenceIndex(metrics)).toBeCloseTo(0);
+    expect(computeCoherenceIndex(metrics, undefined, CORE_INVERTED)).toBeCloseTo(0);
   });
 
   it("returns 0.5 for mixed metrics", () => {
@@ -30,19 +33,30 @@ describe("computeCoherenceIndex", () => {
       contradictionPressure: 0.5,
       semanticDiffusion: 0.5,
     };
-    expect(computeCoherenceIndex(metrics)).toBeCloseTo(0.5);
+    expect(computeCoherenceIndex(metrics, undefined, CORE_INVERTED)).toBeCloseTo(0.5);
   });
 
   it("respects custom weights", () => {
     const metrics: MetricSnapshot = {
-      goalDrift: 0,            // → 1 after inversion
-      memoryRetention: 0,      // 0, not inverted
-      contradictionPressure: 0, // → 1 after inversion
-      semanticDiffusion: 0,     // → 1 after inversion
+      goalDrift: 0,
+      memoryRetention: 0,
+      contradictionPressure: 0,
+      semanticDiffusion: 0,
     };
-    // Weight only memoryRetention (which is 0)
+    // Weight only memoryRetention (which is 0, not inverted)
     const weights = { memoryRetention: 1 };
-    expect(computeCoherenceIndex(metrics, weights)).toBeCloseTo(0);
+    expect(computeCoherenceIndex(metrics, weights, CORE_INVERTED)).toBeCloseTo(0);
+  });
+
+  it("treats all metrics as direct when no inverted set is given", () => {
+    const metrics: MetricSnapshot = {
+      goalDrift: 0,
+      memoryRetention: 1,
+      contradictionPressure: 0,
+      semanticDiffusion: 0,
+    };
+    // No inverted set → all direct → (0+1+0+0)/4 = 0.25
+    expect(computeCoherenceIndex(metrics)).toBeCloseTo(0.25);
   });
 
   it("handles custom metric keys", () => {
@@ -53,7 +67,6 @@ describe("computeCoherenceIndex", () => {
       semanticDiffusion: 0,
       customMetric: 0.5,
     };
-    // Custom metric not in "inverted" set, treated as direct value
     const weights = { customMetric: 1 };
     expect(computeCoherenceIndex(metrics, weights)).toBeCloseTo(0.5);
   });
@@ -66,6 +79,52 @@ describe("computeCoherenceIndex", () => {
       semanticDiffusion: 0.5,
     };
     expect(computeCoherenceIndex(metrics, {})).toBe(1);
+  });
+
+  describe("invertedMetrics parameter", () => {
+    it("inverts only metrics in the set", () => {
+      const metrics: MetricSnapshot = {
+        goalDrift: 0,
+        memoryRetention: 1,
+        contradictionPressure: 0,
+        semanticDiffusion: 0,
+        customBadMetric: 0.8,
+      };
+      const invertedSet = new Set(["customBadMetric"]);
+      const weights = { customBadMetric: 1 };
+      // 0.8 inverted → 0.2
+      expect(computeCoherenceIndex(metrics, weights, invertedSet)).toBeCloseTo(0.2);
+    });
+
+    it("empty inverted set treats all metrics as direct", () => {
+      const metrics: MetricSnapshot = {
+        goalDrift: 0.7,
+        memoryRetention: 0.3,
+        contradictionPressure: 0,
+        semanticDiffusion: 0,
+      };
+      const weights = { goalDrift: 1 };
+      expect(computeCoherenceIndex(metrics, weights, new Set())).toBeCloseTo(0.7);
+    });
+
+    it("works with scalar metric names in inverted set", () => {
+      const metrics: MetricSnapshot = {
+        goalDrift: 0,
+        memoryRetention: 1,
+        contradictionPressure: 0,
+        semanticDiffusion: 0,
+        compactionPressure: 0.6,
+        contextSaturation: 0.4,
+      };
+      const invertedSet = new Set([
+        "goalDrift", "contradictionPressure", "semanticDiffusion",
+        "compactionPressure", "contextSaturation",
+      ]);
+      const weights = { compactionPressure: 0.5, contextSaturation: 0.5 };
+      // compactionPressure: 1-0.6=0.4, contextSaturation: 1-0.4=0.6
+      // weighted: (0.4*0.5 + 0.6*0.5) / 1.0 = 0.5
+      expect(computeCoherenceIndex(metrics, weights, invertedSet)).toBeCloseTo(0.5);
+    });
   });
 });
 
