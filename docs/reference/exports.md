@@ -45,7 +45,7 @@ import {
 | `computeMemoryRetention(goalEmbeddings, memoryEmbeddings)` | metrics | Compute memory retention score |
 | `computeContradictionPressure(contextEmbeddings, threshold?)` | metrics | Compute contradiction pressure |
 | `computeSemanticDiffusion(contextEmbeddings)` | metrics | Compute semantic diffusion |
-| `computeCoherenceIndex(metrics, weights?)` | metrics | Compute weighted coherence index |
+| `computeCoherenceIndex(metrics, weights?, invertedMetrics?)` | metrics | Compute weighted coherence index |
 | `classifyBand(coherenceIndex, thresholds?)` | metrics | Classify index into a band |
 | `cosineSimilarity(a, b)` | util | Cosine similarity between vectors |
 | `dot(a, b)` | util | Dot product of two vectors |
@@ -64,12 +64,12 @@ import {
 
 ## Metric Instances
 
-| Instance | Type | Description |
-|----------|------|-------------|
-| `goalDriftMetric` | `MetricFn` | Goal drift as a pluggable metric |
-| `memoryRetentionMetric` | `MetricFn` | Memory retention as a pluggable metric |
-| `contradictionPressureMetric` | `MetricFn` | Contradiction pressure as a pluggable metric |
-| `semanticDiffusionMetric` | `MetricFn` | Semantic diffusion as a pluggable metric |
+| Instance | Type | Inverted | Description |
+|----------|------|----------|-------------|
+| `goalDriftMetric` | `MetricFn` | Yes | Goal drift as a pluggable metric |
+| `memoryRetentionMetric` | `MetricFn` | No | Memory retention as a pluggable metric |
+| `contradictionPressureMetric` | `MetricFn` | Yes | Contradiction pressure as a pluggable metric |
+| `semanticDiffusionMetric` | `MetricFn` | Yes | Semantic diffusion as a pluggable metric |
 
 ## Types
 
@@ -77,7 +77,8 @@ import {
 |------|--------|-------------|
 | `Embedder` | types | Pluggable embedding interface |
 | `StateProvider` | types | Pluggable agent state access |
-| `MetricFn` | types | Metric strategy pattern |
+| `MetricFn` | types | Embedding-based metric strategy |
+| `ScalarMetricFn` | types | Scalar metric strategy (no embeddings) |
 | `MetricInput` | types | Input data for metric functions |
 | `MetricSnapshot` | types | All metric values |
 | `MetricWeights` | types | Weights for coherence index |

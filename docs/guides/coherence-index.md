@@ -17,7 +17,9 @@ const metrics = {
   semanticDiffusion: 0.15,
 };
 
-const index = computeCoherenceIndex(metrics);
+const invertedMetrics = new Set(["goalDrift", "contradictionPressure", "semanticDiffusion"]);
+
+const index = computeCoherenceIndex(metrics, undefined, invertedMetrics);
 const band = classifyBand(index);
 
 console.log(index); // ~0.86
@@ -33,7 +35,7 @@ Metrics have different polarities:
 - **Not inverted** (e.g., `memoryRetention`): higher value = more coherent → used as-is
 - **Inverted** (e.g., `goalDrift`): higher value = less coherent → flipped to `1 - value`
 
-The function maintains a hardcoded set of inverted metrics: `goalDrift`, `contradictionPressure`, and `semanticDiffusion`. Memory retention is the only core metric that's used directly (higher = better).
+The sensor builds the inverted set automatically from each metric's `inverted` flag. When calling `computeCoherenceIndex` directly, you pass the inverted set as the third parameter (defaults to empty set).
 
 ### Weighted Sum
 
@@ -130,6 +132,7 @@ classifyBand(0.35); // "red"
 function computeCoherenceIndex(
   metrics: MetricSnapshot,
   weights?: MetricWeights,
+  invertedMetrics?: ReadonlySet<string>,
 ): number;
 
 function classifyBand(

@@ -17,7 +17,9 @@
   "scripts": {
     "build": "tsup",
     "test": "vitest --run",
-    "lint": "oxlint src"
+    "test:coverage": "vitest --run --coverage",
+    "lint": "oxlint src",
+    "prepublishOnly": "pnpm build"
   },
   "keywords": [
     "coherence",

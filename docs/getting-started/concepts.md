@@ -16,6 +16,7 @@ graph LR
     Metrics --> CI[Coherence Index]
     CI --> Band[Band Classification]
     Band --> Reading[CoherenceReading]
+    ScalarMetrics[ScalarMetricFn] --> CI
 ```
 
 The sensor pipeline runs on every clock tick:
@@ -23,8 +24,9 @@ The sensor pipeline runs on every clock tick:
 1. **StateProvider** gathers the agent's current goals, context, and memories
 2. **Embedder** converts text into vectors
 3. **MetricFn[]** compute metrics from the embeddings (strategy pattern)
-4. **Coherence index** is computed as a weighted sum of all metrics
-5. **Band classification** maps the index to green/yellow/orange/red
+4. **ScalarMetricFn[]** compute metrics directly from agent state (no embeddings)
+5. **Coherence index** is computed as a weighted sum of all metrics
+6. **Band classification** maps the index to green/yellow/orange/red
 
 ## Interoception
 
@@ -64,13 +66,26 @@ The state provider is the bridge between your agent's internals and the sensor. 
 ```typescript
 interface MetricFn {
   name: string;
+  inverted?: boolean;
   compute(input: MetricInput): number;
 }
 ```
 
-Metrics follow the strategy pattern. Each has a name (used as the key in `MetricSnapshot`) and a `compute` function that returns a value in [0, 1].
+Metrics follow the strategy pattern. Each has a name (used as the key in `MetricSnapshot`), an optional `inverted` flag for polarity, and a `compute` function that returns a value in [0, 1].
 
-**Polarity**: Some metrics are "inverted" — higher values mean _less_ coherent. Goal drift is inverted (1 = drifted = bad), while memory retention is not (1 = retained = good). The `computeCoherenceIndex` function handles this internally, flipping inverted metrics so the final index always means "higher = more coherent".
+**Polarity**: The `inverted` flag declares whether higher values mean _less_ coherent. Goal drift is inverted (1 = drifted = bad), while memory retention is not (1 = retained = good). The sensor reads these flags to build the inverted set automatically.
+
+## ScalarMetricFn
+
+```typescript
+interface ScalarMetricFn {
+  name: string;
+  inverted?: boolean;
+  compute(): number | Promise<number>;
+}
+```
+
+Scalar metrics don't need embeddings. They read directly from agent state — database lookups, API calls, counters, etc. They're async-safe and must return 0 if their data source is unavailable (noop-safe).
 
 ## CoherenceReading
 
@@ -88,13 +103,14 @@ The output of every sensor measurement. Contains all metric values, the weighted
 
 ## How They Fit Together
 
-A clock ticks → the sensor calls your StateProvider to gather goals, context, and memories → passes everything through the Embedder → runs each MetricFn against the embeddings → computes a weighted coherence index → classifies into a band → returns a `CoherenceReading`.
+A clock ticks → the sensor calls your StateProvider to gather goals, context, and memories → passes everything through the Embedder → runs each MetricFn against the embeddings → runs each ScalarMetricFn independently → computes a weighted coherence index → classifies into a band → returns a `CoherenceReading`.
 
 The sensor stores readings in a ring buffer (default 100), accessible via `sensor.history()`. The consumer decides what to do with the reading — pause, re-plan, log, alert, or continue.
 
 ## Design Philosophy
 
 - **Pure measurement** — the sensor has no side effects on the signal bus or agent behavior
-- **Pluggable everything** — Embedder, StateProvider, and MetricFn are all consumer-provided
-- **Noop-safe** — empty inputs produce 0, not errors
+- **Pluggable everything** — Embedder, StateProvider, MetricFn, and ScalarMetricFn are all consumer-provided
+- **Polarity as declaration** — the `inverted` flag is the single source of truth for metric polarity
+- **Noop-safe** — scalar metrics return 0 when data is unavailable; empty inputs produce 0, not errors
 - **Strategy pattern** — swap, add, or remove metrics without changing the sensor
