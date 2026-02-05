@@ -1,0 +1,38 @@
+{
+  "name": "@peleke.s/interoception",
+  "version": "0.1.0",
+  "description": "Coherence sensing for autonomous AI agents",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest --run",
+    "lint": "oxlint src"
+  },
+  "keywords": ["coherence", "interoception", "ai", "agent", "sensing"],
+  "author": "Peleke Sengstacke",
+  "license": "MIT",
+  "peerDependencies": {
+    "@peleke.s/cadence": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@peleke.s/cadence": "file:../../../cadence",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "oxlint": "^0.16.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
